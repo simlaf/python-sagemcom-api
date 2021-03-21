@@ -127,3 +127,7 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+bell-api.py
+.vscode/launch.json
+.vscode/settings.json
+Project files/ParentalControl.json

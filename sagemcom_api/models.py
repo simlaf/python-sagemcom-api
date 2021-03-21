@@ -3,6 +3,8 @@
 import dataclasses
 from dataclasses import dataclass
 from typing import Any, List, Optional
+from .enums import Weekday
+import time
 
 
 @dataclass
@@ -162,3 +164,207 @@ class PortMapping:
     def id(self):
         """Return unique ID for port mapping."""
         return self.uid
+
+@dataclass
+class Parental_Control_Rule:
+    """Representation of a Parental Control Rule"""
+
+    uid: int
+    enable: bool
+    status: Optional[str] = None  # Enum
+    alias: Optional[str] = None
+    priority: Optional[int] = None
+    time_slots: Optional[str] = None #time_slot_list xpath
+    wan_access: Optional[str] = None
+    lan_access: Optional[str] = None
+    restriction_access: Optional[str] = None
+    restrictions: Optional[str] = None
+    mac_addresses: Optional[str] = None #mac_address_list xpath
+
+    def __init__(self, **kwargs):
+        """Override to accept more args than specified."""
+        names = {f.name for f in dataclasses.fields(self)}
+        for k, v in kwargs.items():
+            if k in names:
+                setattr(self, k, v)
+
+    @property
+    def id(self):
+        """Return unique ID for rule."""
+        return self.uid
+
+    @property
+    def name(self):
+        return self.alias
+
+@dataclass
+class TimeSlot:
+    """Representation of a single time slot in a time slot list for Parental Control"""
+
+    uid: int
+    week_days: int
+    start_time: int
+    end_time: int
+
+    @property
+    def id(self):
+        """Return unique ID for TimeSlot."""
+        return self.uid
+
+    @property
+    def weekday(self):
+        """Return weekday for time slot"""
+        return Weekday(self.week_days).name
+
+    @property
+    def start(self):
+        return time.strftime("%H:%M", time.gmtime(self.start_time))
+
+    @property
+    def end(self):
+        return time.strftime("%H:%M", time.gmtime(self.end_time)) 
+
+
+@dataclass
+class TimeSlotList:
+    """Representation of a list of TimeSlots for a single rule"""
+
+    uid: int 
+    alias: str #Rule alias followed by epoch of last modification
+    always: bool
+    time_slots: List[TimeSlot]
+
+    @property
+    def id(self):
+        """Return ID for TimeSlotList associated with UID of Rule."""
+        return self.uid
+
+    @property
+    def last_updated(self):
+        epoch = int(self.alias[-13:])/1000
+        return time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(epoch))
+
+
+    def __post_init__(self):
+        """Convert time_slots to List of TimeSlot"""
+        slots = []
+        for t in self.time_slots:
+            slots.append(TimeSlot(**t))
+        self.time_slots = slots
+
+
+@dataclass
+class MacAddressList:
+    """Representation of a list of Mac Addresses impacted by a rule"""
+
+    uid: int 
+    alias: str #Rule alias followed by epoch of last modification
+    all_devices: bool
+    mac_addresses: Optional[str]
+
+    @property
+    def last_updated(self):
+        epoch = int(self.alias[-13:])/1000
+        return time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(epoch))
+
+@dataclass
+class Parental_Control_Config:
+    """Parental Control Configuration"""
+
+    enable: bool
+    rules: List[Parental_Control_Rule]
+    time_slot_lists: List[TimeSlotList]
+    restriction_lists: List
+    mac_address_lists: List[MacAddressList]
+
+    def __post_init__(self):
+        """Convert field lists to List of Classes"""
+        _rules = []
+        _time_slot_lists = []
+        _mac_address_lists = []
+
+        for r in self.rules:
+            _rules.append(Parental_Control_Rule(**r))
+        
+        for t in self.time_slot_lists:
+            _time_slot_lists.append(TimeSlotList(**t))
+
+        for m in self.mac_address_lists:
+            _mac_address_lists.append(MacAddressList(**m))
+        
+        self.rules = _rules
+        self.time_slot_lists = _time_slot_lists
+        self.mac_address_lists = _mac_address_lists
+
+@dataclass
+class Functionality:
+    """A fonctionnality of Sagemcom device for the user"""
+
+    uid: int
+    name: str
+    readable: bool
+    writable: bool
+
+@dataclass
+class Functionalities:
+    """All Fonctionalities listed for the user"""
+
+    user_uid: int
+    functionalities: List[Functionality]
+
+    def get_readables(self):
+        """Returns the name of the readable functionalities"""
+        return [f.name for f in self.functionalities if f.readable == True]
+
+    def get_writables(self):
+        """Returns the name of the writeable functionalities"""
+        return [f.name for f in self.functionalities if f.writable == True]
+
+    def get_readonly(self):
+        """Returns the name of functionalities that are readable but not writable"""
+        return [f.name for f in self.functionalities if f.readable == True and f.writable == False]
+
+
+    def __post_init__(self):
+        
+        funcs = []
+        for f in self.functionalities:
+            funcs.append(Functionality(**f))
+        self.functionalities = funcs
+
+@dataclass
+class Usage_Entry():
+    modem: str
+    mac_address: str
+    date: str
+    download: int  #Probably GB?
+    upload: int #Probably GB?
+    device_type: str
+
+    def __post_init__(self):
+        for field in dataclasses.fields(self):
+            value = getattr(self, field.name)
+            if not isinstance(value, field.type):
+                setattr(self, field.name, field.type(value))
+
+
+@dataclass
+class Usage_Entry_List():
+    start_date: str
+    end_date: str
+    entries: List[Usage_Entry]
+
+    def __post_init__(self):
+        _entries = []
+
+        for entry in self.entries:
+            _entries.append(Usage_Entry(**entry))
+        self.entries = _entries
+
+    def get_total_download(self):
+        return sum([entry.download for entry in self.entries if entry.device_type == 'GATEWAY'])
+
+    def get_total_upload(self):
+        return sum([entry.upload for entry in self.entries if entry.device_type == 'GATEWAY'])
+
+    
